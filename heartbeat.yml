@@ -1,0 +1,39 @@
+name: Heartbeat
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Analyze WinSxS size
+        shell: powershell
+        run: |
+          $size = (Get-ChildItem C:\Windows\WinSxS -Recurse -ErrorAction SilentlyContinue |
+            Measure-Object -Property Length -Sum).Sum / 1GB
+          Write-Output "WinSxS size: $([math]::Round($size,2)) GB"
+
+      - name: Analyze Installer orphans
+        shell: powershell
+        run: |
+          $valid = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData" -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Property -contains "LocalPackage" } |
+            ForEach-Object { (Get-ItemProperty $_.PSPath).LocalPackage }
+          $orphans = Get-ChildItem "C:\Windows\Installer\*.ms?" |
+            Where-Object { $_.FullName -notin $valid }
+          Write-Output "Orphaned files: $($orphans.Count)"
+          Write-Output "Orphaned size: $([math]::Round(($orphans | Measure-Object -Property Length -Sum).Sum / 1MB, 1)) MB"
+
+      - name: Commit scan results
+        shell: bash
+        run: |
+          git config user.name "bloatkill-bot"
+          git config user.email "bot@ry-ops.dev"
+          git add -A
+          git commit -m "chore: heartbeat $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No changes"
+          git push || echo "Nothing to push"
