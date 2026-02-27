@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLOATKILL — Windows Storage Remediation</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  min-height: 100vh;
+  background: #080a0f;
+  font-family: 'Courier New', Courier, monospace;
+  color: #c8d4e0;
+  padding: 32px 24px;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(#ffffff05 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff05 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scanline */
+.scanline {
+  position: fixed;
+  left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(transparent, #ffffff08, transparent);
+  pointer-events: none;
+  z-index: 999;
+  animation: scanline 6s linear infinite;
+}
+
+@keyframes scanline {
+  0%   { top: -10%; }
+  100% { top: 110%; }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-orange {
+  0%, 100% { box-shadow: 0 0 8px #ff6a00aa; }
+  50%       { box-shadow: 0 0 24px #ff6a00, 0 0 48px #ff6a0055; }
+}
+@keyframes pulse-blue {
+  0%, 100% { box-shadow: 0 0 8px #00c9ffaa; }
+  50%       { box-shadow: 0 0 24px #00c9ff, 0 0 48px #00c9ff55; }
+}
+
+/* Wrapper */
+#app {
+  position: relative;
+  z-index: 1;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* Header */
+.hdr-eyebrow {
+  font-size: 11px;
+  color: #ff4400;
+  letter-spacing: 4px;
+  margin-bottom: 8px;
+  opacity: 0.8;
+}
+.hdr-title {
+  font-size: clamp(24px, 5vw, 42px);
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
+  color: #e8f0fa;
+  text-shadow: 0 0 40px #4488ff44;
+}
+.hdr-title span { color: #ff4400; }
+.hdr-sub {
+  font-size: 12px;
+  color: #5a7a9a;
+  margin-top: 6px;
+  letter-spacing: 2px;
+}
+header { margin-bottom: 36px; }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 14px 20px;
+  border-radius: 6px;
+  border: 1px solid #1e2a38;
+  background: #0d1117;
+  color: #4a6a7a;
+  font-size: 13px;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all .25s;
+}
+.tab-btn.active-winsxs {
+  background: #ff6a0018;
+  border-color: #ff6a00;
+  color: #ff6a00;
+  animation: pulse-orange 2.5s infinite;
+}
+.tab-btn.active-installer {
+  background: #00c9ff18;
+  border-color: #00c9ff;
+  color: #00c9ff;
+  animation: pulse-blue 2.5s infinite;
+}
+
+/* Info card */
+.info-card {
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  animation: fadeIn .3s ease;
+}
+.info-card-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.folder-eyebrow {
+  font-size: 11px;
+  letter-spacing: 3px;
+  margin-bottom: 6px;
+}
+.folder-path {
+  font-size: 13px;
+  color: #5a8aaa;
+  margin-bottom: 12px;
+}
+.folder-desc {
+  margin: 0;
+  line-height: 1.7;
+  font-size: 14px;
+  color: #9ab0c8;
+  max-width: 580px;
+}
+.size-badge {
+  border-radius: 6px;
+  padding: 12px 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.size-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+.size-val {
+  font-size: 28px;
+  font-weight: 900;
+}
+.risk-banner {
+  padding: 10px 16px;
+  background: #ff440011;
+  border: 1px solid #ff440033;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #ff8866;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Methods */
+.methods-label {
+  font-size: 11px;
+  color: #4a6a7a;
+  letter-spacing: 3px;
+  margin-bottom: 14px;
+}
+.methods-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.method-card {
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all .2s;
+  cursor: pointer;
+}
+.method-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.method-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.risk-chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.method-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #c8d8e8;
+}
+.method-arrow {
+  font-size: 14px;
+  transition: transform .2s;
+  display: inline-block;
+}
+.method-arrow.open { transform: rotate(90deg); }
+
+.method-body {
+  padding: 0 20px 20px;
+  animation: fadeIn .2s ease;
+  display: none;
+}
+.method-body.open { display: block; }
+.method-note {
+  font-size: 13px;
+  color: #7a9ab0;
+  margin-top: 0;
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+.cmd-block {
+  background: #060a0f;
+  border: 1px solid #1e2a38;
+  border-radius: 5px;
+  padding: 14px 16px;
+  position: relative;
+}
+.cmd-block pre {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #88ddbb;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-right: 70px;
+  font-family: 'Courier New', monospace;
+}
+.copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: #ffffff0a;
+  border: 1px solid #ffffff22;
+  color: #aaa;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  transition: all .2s;
+  letter-spacing: 1px;
+}
+.copy-btn:hover { background: #ffffff15; color: #ccc; }
+.copy-btn.copied { background: #00ff8833; border-color: #00ff88; color: #00ff88; }
+
+/* Footer */
+footer {
+  margin-top: 48px;
+  border-top: 1px solid #1e2a38;
+  padding-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #2a4a5a;
+  letter-spacing: 2px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.blink { animation: blink 1.2s infinite; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 600px) {
+  body { padding: 20px 14px; }
+
+  .hdr-eyebrow {
+    font-size: 9px;
+    letter-spacing: 2px;
+  }
+  .hdr-sub {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+  header { margin-bottom: 24px; }
+
+  .tabs { gap: 8px; margin-bottom: 20px; }
+  .tab-btn {
+    padding: 10px 12px;
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  .info-card { padding: 16px 14px; }
+  .info-card-inner { flex-direction: column; }
+  .size-badge {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+  }
+  .size-label { margin-bottom: 0; margin-right: 8px; }
+  .size-val { font-size: 22px; }
+
+  .folder-desc { font-size: 13px; max-width: 100%; }
+
+  .method-header { padding: 12px 14px; }
+  .method-body   { padding: 0 14px 16px; }
+
+  /* Copy button: below pre on mobile instead of absolute */
+  .cmd-block { padding: 12px 12px 44px; }
+  .cmd-block pre { padding-right: 0; }
+  .copy-btn {
+    position: absolute;
+    top: auto;
+    bottom: 8px;
+    right: 10px;
+  }
+
+  footer {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="scanline"></div>
+
+<div id="app">
+
+  <header>
+    <div class="hdr-eyebrow">◉ WINDOWS STORAGE REMEDIATION — SYSADMIN REFERENCE v2.6</div>
+    <h1 class="hdr-title">BLOAT<span>KILL</span></h1>
+    <div class="hdr-sub">WINDOWS FOLDER CLEANUP INTELLIGENCE SYSTEM</div>
+  </header>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab-btn active-winsxs" id="tab-winsxs" onclick="setFolder('WinSxS')">
+      ⬡ &nbsp;WinSxS
+    </button>
+    <button class="tab-btn" id="tab-installer" onclick="setFolder('Installer')">
+      ◈ &nbsp;Installer
+    </button>
+  </div>
+
+  <!-- INFO CARD -->
+  <div class="info-card" id="info-card">
+    <div class="info-card-inner">
+      <div>
+        <div class="folder-eyebrow" id="folder-eyebrow">FOLDER INTEL</div>
+        <div class="folder-path" id="folder-path"></div>
+        <p class="folder-desc" id="folder-desc"></p>
+      </div>
+      <div class="size-badge" id="size-badge">
+        <div class="size-label" id="size-label">TYPICAL SIZE</div>
+        <div class="size-val" id="size-val"></div>
+      </div>
+    </div>
+    <div class="risk-banner">
+      <span>⚠</span>
+      <span id="risk-text"></span>
+    </div>
+  </div>
+
+  <!-- METHODS -->
+  <div class="methods-label" id="methods-label"></div>
+  <div class="methods-list" id="methods-list"></div>
+
+  <footer>
+    <span>ry-ops.dev // BLOATKILL</span>
+    <span class="blink">█</span>
+    <span>ALWAYS TEST IN NON-PROD</span>
+  </footer>
+
+</div>
+
+<script>
+const data = {
+  WinSxS: {
+    color: '#ff6a00',
+    size: '8–15 GB',
+    location: 'C:\\Windows\\WinSxS',
+    description: 'The Windows Component Store. Houses all Windows component versions ever installed — including superseded updates, rollback data, and side-by-side assemblies. It is intentionally large and managed by the OS.',
+    risks: 'Never manually delete files here. Windows manages it exclusively.',
+    methods: [
+      {
+        label: 'Disk Cleanup (built-in)',
+        cmd: 'cleanmgr /sageset:1\ncleanmgr /sagerun:1',
+        note: "Select 'Windows Update Cleanup' — removes superseded components.",
+        danger: 'low'
+      },
+      {
+        label: 'DISM StartComponentCleanup',
+        cmd: 'Dism.exe /online /Cleanup-Image /StartComponentCleanup',
+        note: 'Removes superseded component versions after a 30-day safety window.',
+        danger: 'low'
+      },
+      {
+        label: 'DISM + ResetBase (aggressive)',
+        cmd: 'Dism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase',
+        note: 'Removes ALL superseded components. Disables rollback of installed updates. Irreversible.',
+        danger: 'high'
+      },
+      {
+        label: 'PowerShell — Analyze size',
+        cmd: 'Get-ChildItem C:\\Windows\\WinSxS | Measure-Object -Property Length -Sum | Select-Object @{N="Size(GB)";E={[math]::Round($_.Sum/1GB,2)}}',
+        note: 'Accurate WinSxS size audit before cleanup.',
+        danger: 'safe'
+      }
+    ]
+  },
+  Installer: {
+    color: '#00c9ff',
+    size: '3–12 GB',
+    location: 'C:\\Windows\\Installer',
+    description: 'Windows Installer cache. Stores .msi and .msp patch files used by Windows Installer for repair, modify, and uninstall operations. Orphaned files accumulate over years of software churn.',
+    risks: 'Deleting active patch files breaks repair/uninstall of installed apps. Use tools that detect orphans only.',
+    methods: [
+      {
+        label: 'PatchCleaner (GUI — recommended)',
+        cmd: '# Download: https://www.hendesoftware.com/patchcleaner.aspx\n# Detects orphaned vs. active installer files safely.',
+        note: 'Move orphans to another drive rather than delete — safest approach.',
+        danger: 'low'
+      },
+      {
+        label: 'msizap.exe (legacy SDK tool)',
+        cmd: 'msizap.exe G!',
+        note: 'Removes orphaned installer entries from registry and cache. Deprecated — use only on older systems.',
+        danger: 'medium'
+      },
+      {
+        label: 'PowerShell — Find orphans',
+        cmd: '$valid = Get-ChildItem "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData" -Recurse |\n  Where-Object { $_.Property -contains "LocalPackage" } |\n  ForEach-Object { (Get-ItemProperty $_.PSPath).LocalPackage }\n\nGet-ChildItem "C:\\Windows\\Installer\\*.ms?" |\n  Where-Object { $_.FullName -notin $valid } |\n  Select-Object FullName, @{N="MB";E={[math]::Round($_.Length/1MB,1)}}',
+        note: 'Lists orphaned files by cross-referencing registry. Review before deleting.',
+        danger: 'safe'
+      },
+      {
+        label: 'Disk Cleanup',
+        cmd: 'cleanmgr /d C:',
+        note: "Limited effectiveness here — won't touch active installer files but clears temp variants.",
+        danger: 'low'
+      }
+    ]
+  }
+};
+
+const riskStyles = {
+  safe:   { bg: '#00ff8822', border: '#00ff88', text: '#00ff88', label: 'SAFE' },
+  low:    { bg: '#ffe06622', border: '#ffe066', text: '#ffe066', label: 'LOW RISK' },
+  medium: { bg: '#ff8c0022', border: '#ff8c00', text: '#ff8c00', label: 'MEDIUM' },
+  high:   { bg: '#ff003322', border: '#ff0033', text: '#ff0033', label: 'DANGER' }
+};
+
+let currentFolder = 'WinSxS';
+let expandedIdx = null;
+
+function setFolder(name) {
+  currentFolder = name;
+  expandedIdx = null;
+  render();
+}
+
+function render() {
+  const f = data[currentFolder];
+  const c = f.color;
+
+  // Tabs
+  document.getElementById('tab-winsxs').className =
+    'tab-btn' + (currentFolder === 'WinSxS' ? ' active-winsxs' : '');
+  document.getElementById('tab-installer').className =
+    'tab-btn' + (currentFolder === 'Installer' ? ' active-installer' : '');
+
+  // Info card
+  const card = document.getElementById('info-card');
+  card.style.background = '#0d1117';
+  card.style.border = `1px solid ${c}44`;
+
+  document.getElementById('folder-eyebrow').style.color = c;
+  document.getElementById('folder-path').textContent = f.location;
+  document.getElementById('folder-desc').textContent = f.description;
+  document.getElementById('risk-text').textContent = f.risks;
+
+  const sb = document.getElementById('size-badge');
+  sb.style.background = c + '18';
+  sb.style.border = `1px solid ${c}66`;
+  document.getElementById('size-label').style.color = c;
+  document.getElementById('size-val').style.color = c;
+  document.getElementById('size-val').textContent = f.size;
+
+  // Methods label
+  document.getElementById('methods-label').textContent =
+    `CLEANUP METHODS — ${f.methods.length} AVAILABLE`;
+
+  // Methods list
+  const list = document.getElementById('methods-list');
+  list.innerHTML = '';
+
+  f.methods.forEach((m, i) => {
+    const r = riskStyles[m.danger];
+    const isOpen = expandedIdx === i;
+
+    const card = document.createElement('div');
+    card.className = 'method-card';
+    card.style.background = isOpen ? '#0f1620' : '#0d1117';
+    card.style.border = `1px solid ${isOpen ? c + '66' : '#1e2a38'}`;
+
+    card.innerHTML = `
+      <div class="method-header" onclick="toggleMethod(${i})">
+        <div class="method-left">
+          <span class="risk-chip" style="background:${r.bg};border:1px solid ${r.border};color:${r.text}">${r.label}</span>
+          <span class="method-name">${m.label}</span>
+        </div>
+        <span class="method-arrow ${isOpen ? 'open' : ''}" style="color:${c}">▶</span>
+      </div>
+      <div class="method-body ${isOpen ? 'open' : ''}">
+        <p class="method-note">${m.note}</p>
+        <div class="cmd-block">
+          <pre id="cmd-${i}">${escHtml(m.cmd)}</pre>
+          <button class="copy-btn" id="copy-${i}" onclick="event.stopPropagation();copyCmd(${i})">COPY</button>
+        </div>
+      </div>`;
+
+    list.appendChild(card);
+  });
+}
+
+function toggleMethod(i) {
+  expandedIdx = expandedIdx === i ? null : i;
+  render();
+}
+
+function copyCmd(i) {
+  const cmd = data[currentFolder].methods[i].cmd;
+  navigator.clipboard?.writeText(cmd).then(() => {
+    const btn = document.getElementById('copy-' + i);
+    if (btn) {
+      btn.textContent = '✓ COPIED';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'COPY';
+        btn.classList.remove('copied');
+      }, 1500);
+    }
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+render();
+</script>
+</body>
+</html>
